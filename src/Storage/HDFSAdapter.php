@@ -4,7 +4,6 @@ declare(strict_types=1);
 namespace Elabftw\Storage;
 
 use GuzzleHttp\Client;
-
 use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\FileAttributes;
 use League\Flysystem\FilesystemException;
@@ -22,6 +21,7 @@ use League\Flysystem\Config;
 use League\Flysystem\PathPrefixer;
 use League\MimeTypeDetection\FinfoMimeTypeDetector;
 use League\MimeTypeDetection\MimeTypeDetector;
+use Psr\Http\Message\StreamInterface;
 
 class HDFSAdapter implements FilesystemAdapter {
   private Client $client;
@@ -64,22 +64,52 @@ class HDFSAdapter implements FilesystemAdapter {
 
   public function write(string $path, string $contents, Config $config): void
   {
-
+    $this->upload($path, $contents);
   }
 
   public function writeStream(string $path, $contents, Config $config): void
   {
+    $this->upload($path, $contents);
+  }
 
+  private function upload(string $path, $contents): void
+  {
+    $location = $this->prefixer->prefixPath($path);
+    $response = $this->client->post('/upload', [
+      'multipart' => [
+        [
+          'name' => 'path',
+          'contents' => $location
+        ],
+        [
+          'name' => 'file',
+          'contents' => $contents,
+          'filename' => basename($location)
+        ],
+      ]
+    ]);
   }
 
   public function read(string $path): string
   {
-    return "";
+    $body = $this->fetchStream($path);
+    return (string) $body->getContents();
   }
 
   public function readStream(string $path)
   {
+    $resource =  $this->fetchStream($path)->detach();
+    return $resource;
+  }
 
+  private function fetchStream(string $path): StreamInterface
+  {
+    $location = $this->prefixer->prefixPath($path);
+    $response = $this->client->get('/download', [
+      'query' => ['path' => $location],
+      'stream' => true
+    ]);
+    return $response->getBody();
   }
 
   public function delete(string $path): void
