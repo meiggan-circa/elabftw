@@ -44,12 +44,22 @@ class HDFSAdapter implements FilesystemAdapter {
 
   public function fileExists(string $path): bool
   {
-   return false;
+    $location = $this->prefixer->prefixPath($path);
+    $response = $this->client->get('/exists', [
+      'query' => ['path' => $location]
+    ]);
+    $data = json_decode($response->getBody()->getContents(), true);
+    return $data['path_type'] === 'file';
   }
 
   public function directoryExists(string $path): bool
   {
-    return false;
+    $location = $this->prefixer->prefixPath($path);
+    $response = $this->client->get('/exists', [
+      'query' => ['path' => $location]
+    ]);
+    $data = json_decode($response->getBody()->getContents(), true);
+    return $data['path_type'] === 'directory';
   }
 
   public function write(string $path, string $contents, Config $config): void
