@@ -145,17 +145,41 @@ class HDFSAdapter implements FilesystemAdapter {
 
   public function mimeType(string $path): FileAttributes
   {
-    return new FileAttributes($path);
+    $location = $this->prefixer->prefixPath($path);
+    if ( ! $this->fileExists($location)) {
+        throw UnableToRetrieveMetadata::mimeType($location, 'No such file exists.');
+    }
+
+    $mimeType = $this->mimeTypeDetector->detectMimeTypeFromPath($location);
+    if ($mimeType === null) {
+        throw UnableToRetrieveMetadata::mimeType($path, error_get_last()['message'] ?? '');
+    }
+
+    return new FileAttributes($path, null, null, null, $mimeType);
   }
 
   public function lastModified(string $path): FileAttributes
   {
-    return new FileAttributes($path);
+    $location = $this->prefixer->prefixPath($path);
+    $response = $this->client->get('/list', [
+      'query' => ['path' => $location]
+    ]);
+    $data = json_decode($response->getBody()->getContents(), true);
+    $lastModified = $data['mtime'];
+
+    return new FileAttributes($path, null, null, $lastModified);
   }
 
   public function fileSize(string $path): FileAttributes
   {
-    return new FileAttributes($path);
+    $location = $this->prefixer->prefixPath($path);
+    $response = $this->client->get('/list', [
+      'query' => ['path' => $location]
+    ]);
+    $data = json_decode($response->getBody()->getContents(), true);
+    $fileSize = $data['size'];
+
+    return new FileAttributes($path, $fileSize);
   }
 
   public function listContents(string $path, bool $deep): iterable
