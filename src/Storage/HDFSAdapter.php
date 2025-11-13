@@ -127,7 +127,10 @@ class HDFSAdapter implements FilesystemAdapter {
 
   public function createDirectory(string $path, Config $config): void
   {
-
+    $location = $this->prefixer->prefixPath($path);
+    $response = $this->client->post('/mkdir', [
+      'body' => ['path' => $location],
+    ]);
   }
 
   public function setVisibility(string $path, string $visibility): void
