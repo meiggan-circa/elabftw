@@ -114,12 +114,15 @@ class HDFSAdapter implements FilesystemAdapter {
 
   public function delete(string $path): void
   {
-
+    $location = $this->prefixer->prefixPath($path);
+    $response = $this->client->post('/delete', [
+      'body' => ['path' => $location],
+    ]);
   }
 
   public function deleteDirectory(string $path): void
   {
-
+    $this->delete($path);
   }
 
   public function createDirectory(string $path, Config $config): void
