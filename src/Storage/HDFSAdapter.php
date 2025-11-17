@@ -18,6 +18,7 @@ use League\Flysystem\UnableToMoveFile;
 use League\Flysystem\UnableToCopyFile;
 use League\Flysystem\InvalidVisibilityProvided;
 use League\Flysystem\Config;
+use League\Flysystem\DirectoryAttributes;
 use League\Flysystem\PathPrefixer;
 use League\MimeTypeDetection\FinfoMimeTypeDetector;
 use League\MimeTypeDetection\MimeTypeDetector;
@@ -184,7 +185,25 @@ class HDFSAdapter implements FilesystemAdapter {
 
   public function listContents(string $path, bool $deep): iterable
   {
-    return [];
+    $location = $this->prefixer->prefixPath($path);
+    $response = $this->client->get('/list', [
+      'query' => [
+        'path' => $location,
+        'deep' => $deep,
+      ]
+    ]);
+    $data = json_decode($response->getBody()->getContents(), true);
+
+    foreach ($data as $pathInfo) {
+      $path = $this->prefixer->stripPrefix($pathInfo['path']);
+      $size = $pathInfo['size'];
+      $lastModified = $pathInfo['mtime'];
+      $isFile = $pathInfo['is_file'];
+
+      yield $isFile ?
+        new FileAttributes($path, $size, null, $lastModified) :
+        new DirectoryAttributes($path, null, $lastModified);
+    }
   }
 
   public function move(string $source, string $destination, Config $config): void
