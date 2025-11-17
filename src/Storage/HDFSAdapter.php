@@ -208,11 +208,25 @@ class HDFSAdapter implements FilesystemAdapter {
 
   public function move(string $source, string $destination, Config $config): void
   {
-
+    $sourcePath = $this->prefixer->prefixPath($source);
+    $destinationPath = $this->prefixer->prefixPath($destination);
+    $response = $this->client->post('/move', [
+      'form_params' => [
+        'src' => $sourcePath,
+        'dest' => $destinationPath,
+      ]
+    ]);
   }
 
   public function copy(string $source, string $destination, Config $config): void
   {
-
+    $sourcePath = $this->prefixer->prefixPath($source);
+    $destinationPath = $this->prefixer->prefixPath($destination);
+    $response = $this->client->post('/copy', [
+      'form_params' => [
+        'src' => $sourcePath,
+        'dest' => $destinationPath,
+      ]
+    ]);
   }
 }
