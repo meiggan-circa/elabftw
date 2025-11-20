@@ -22,6 +22,7 @@ use Elabftw\Storage\Fixtures;
 use Elabftw\Storage\Local;
 use Elabftw\Storage\Memory;
 use Elabftw\Storage\S3;
+use Elabftw\Storage\HDFS;
 
 /**
  * This enum is responsible for providing a storage provider
@@ -34,6 +35,7 @@ enum Storage: int
     case CACHE = 4;
     case FIXTURES = 5;
     case EXPORTS = 6;
+    case HDFS = 7;
 
     public function getStorage(): StorageInterface
     {
@@ -44,6 +46,7 @@ enum Storage: int
             $this::CACHE => new Cache(),
             $this::FIXTURES => new Fixtures(),
             $this::EXPORTS => new Exports(),
+            $this::HDFS => new HDFS(),
         };
     }
 }
