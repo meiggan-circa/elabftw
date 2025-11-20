@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Elabftw\Storage;
 
+use Elabftw\Elabftw\Env;
 use GuzzleHttp\Client;
 use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\FileAttributes;
@@ -30,13 +31,12 @@ class HDFSAdapter implements FilesystemAdapter {
   private MimeTypeDetector $mimeTypeDetector;
 
   public function __construct(
-    string $apiBaseUrl,
     string $basePath = '/',
     ?MimeTypeDetector $mimeTypeDetector = null,
   )
   {
     $this->client = new Client([
-      'base_uri' => rtrim($apiBaseUrl, '/'),
+      'base_uri' => Env::asString('HDFS_API'),
       'timeout' => 300,
     ]);
     $this->prefixer = new PathPrefixer($basePath);
@@ -46,7 +46,7 @@ class HDFSAdapter implements FilesystemAdapter {
   public function fileExists(string $path): bool
   {
     $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->get('/exists', [
+    $response = $this->client->get('exists', [
       'query' => ['path' => $location]
     ]);
     $data = json_decode($response->getBody()->getContents(), true);
@@ -56,7 +56,7 @@ class HDFSAdapter implements FilesystemAdapter {
   public function directoryExists(string $path): bool
   {
     $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->get('/exists', [
+    $response = $this->client->get('exists', [
       'query' => ['path' => $location]
     ]);
     $data = json_decode($response->getBody()->getContents(), true);
@@ -76,7 +76,7 @@ class HDFSAdapter implements FilesystemAdapter {
   private function upload(string $path, $contents): void
   {
     $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->post('/upload', [
+    $response = $this->client->post('upload/', [
       'multipart' => [
         [
           'name' => 'path',
@@ -106,7 +106,7 @@ class HDFSAdapter implements FilesystemAdapter {
   private function fetchStream(string $path): StreamInterface
   {
     $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->get('/download', [
+    $response = $this->client->get('download', [
       'query' => ['path' => $location],
       'stream' => true
     ]);
@@ -116,8 +116,8 @@ class HDFSAdapter implements FilesystemAdapter {
   public function delete(string $path): void
   {
     $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->post('/delete', [
-      'body' => ['path' => $location],
+    $response = $this->client->post('delete/', [
+      'form_params' => ['path' => $location],
     ]);
   }
 
@@ -129,8 +129,8 @@ class HDFSAdapter implements FilesystemAdapter {
   public function createDirectory(string $path, Config $config): void
   {
     $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->post('/mkdir', [
-      'body' => ['path' => $location],
+    $response = $this->client->post('mkdir/', [
+      'form_params' => ['path' => $location],
     ]);
   }
 
@@ -147,7 +147,7 @@ class HDFSAdapter implements FilesystemAdapter {
   public function mimeType(string $path): FileAttributes
   {
     $location = $this->prefixer->prefixPath($path);
-    if ( ! $this->fileExists($location)) {
+    if ( ! $this->fileExists($path)) {
         throw UnableToRetrieveMetadata::mimeType($location, 'No such file exists.');
     }
 
@@ -162,7 +162,7 @@ class HDFSAdapter implements FilesystemAdapter {
   public function lastModified(string $path): FileAttributes
   {
     $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->get('/list', [
+    $response = $this->client->get('list', [
       'query' => ['path' => $location]
     ]);
     $data = json_decode($response->getBody()->getContents(), true);
@@ -174,7 +174,7 @@ class HDFSAdapter implements FilesystemAdapter {
   public function fileSize(string $path): FileAttributes
   {
     $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->get('/list', [
+    $response = $this->client->get('list', [
       'query' => ['path' => $location]
     ]);
     $data = json_decode($response->getBody()->getContents(), true);
@@ -186,7 +186,7 @@ class HDFSAdapter implements FilesystemAdapter {
   public function listContents(string $path, bool $deep): iterable
   {
     $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->get('/list', [
+    $response = $this->client->get('list', [
       'query' => [
         'path' => $location,
         'deep' => $deep,
@@ -210,7 +210,7 @@ class HDFSAdapter implements FilesystemAdapter {
   {
     $sourcePath = $this->prefixer->prefixPath($source);
     $destinationPath = $this->prefixer->prefixPath($destination);
-    $response = $this->client->post('/move', [
+    $response = $this->client->post('move/', [
       'form_params' => [
         'src' => $sourcePath,
         'dest' => $destinationPath,
@@ -222,7 +222,7 @@ class HDFSAdapter implements FilesystemAdapter {
   {
     $sourcePath = $this->prefixer->prefixPath($source);
     $destinationPath = $this->prefixer->prefixPath($destination);
-    $response = $this->client->post('/copy', [
+    $response = $this->client->post('copy/', [
       'form_params' => [
         'src' => $sourcePath,
         'dest' => $destinationPath,
