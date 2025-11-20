@@ -546,6 +546,7 @@
       <select id='uploads_storage' data-trigger='change' data-model='config' data-target='uploads_storage' class='form-control col-md-3'>
         <option {{ App.Config.configArr.uploads_storage == '1' ? ' selected' }} value='1'>{{ 'Local filesystem'|trans }}</option>
         <option {{ App.Config.configArr.uploads_storage == '2' ? ' selected' }} value='2'>{{ 'S3 bucket'|trans }}</option>
+        <option {{ App.Config.configArr.uploads_storage == '7' ? ' selected' }} value='7'>{{ 'HDFS'|trans }}</option>
       </select>
     </div>
     <p class='smallgray'>{{ 'You can select where uploaded files will be stored. The default is local storage but you can configure any S3 compatible object storage.'|trans }}</p>
