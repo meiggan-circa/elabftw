@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Elabftw\Storage;
 
-use Elabftw\Elabftw\Env;
 use League\Flysystem\FilesystemAdapter;
 use Elabftw\Storage\HDFSAdapter;
 use Override;
