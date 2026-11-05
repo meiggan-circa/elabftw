@@ -18,6 +18,6 @@ class HDFS extends AbstractStorage
   #[Override]
   protected function getAdapter(): FilesystemAdapter
   {
-    return new HDFSAdapter('/elabftw/' . static::FOLDER);
+    return new HDFSAdapter('/' . static::FOLDER);
   }
 }
