@@ -39,3 +39,4 @@ src/ts/langs/*.js
 /todo
 /ideas
 .yarn
+/containers/elabimg/docker-compose.yml
