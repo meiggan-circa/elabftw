@@ -81,6 +81,7 @@ getEnv() {
     use_persistent_mysql_conn=${USE_PERSISTENT_MYSQL_CONN:-false}
     pubchem_pug_url=${PUBCHEM_PUG_URL:-https://pubchem.ncbi.nlm.nih.gov/rest/pug}
     pubchem_pug_view_url=${PUBCHEM_PUG_VIEW_URL:-https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data}
+    hdfs_api=${HDFS_API:-}
 }
 
 checkSiteUrl() {
@@ -406,6 +407,12 @@ populatePhpEnv() {
     else
         sed -i -e "/%ELAB_AWS_ACCESS_KEY%/d" $f
         sed -i -e "/%ELAB_AWS_SECRET_KEY%/d" $f
+    fi
+
+    if [ -n "$hdfs_api" ]; then
+        sed -i -e "s/%HDFS_API%/$(escape_sed_repl "${hdfs_api}")/" $f
+    else
+        sed -i -e "/%HDFS_API%/d" $f
     fi
 
     sed -i -e "s/%DB_QUERY_PROFILING%/$(escape_sed_repl "${db_query_profiling}")/" $f
