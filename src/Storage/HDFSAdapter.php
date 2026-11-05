@@ -6,6 +6,8 @@ namespace Elabftw\Storage;
 
 use Elabftw\Elabftw\Env;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Psr7\Utils;
 use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\FileAttributes;
 use League\Flysystem\UnableToWriteFile;
@@ -19,7 +21,6 @@ use League\Flysystem\UnableToCopyFile;
 use League\Flysystem\Config;
 use League\Flysystem\DirectoryAttributes;
 use League\Flysystem\PathPrefixer;
-use League\Flysystem\StorageAttributes;
 use League\Flysystem\UnableToCheckDirectoryExistence;
 use League\Flysystem\UnableToCheckFileExistence;
 use League\MimeTypeDetection\FinfoMimeTypeDetector;
@@ -49,11 +50,14 @@ class HDFSAdapter implements FilesystemAdapter
   {
     try {
       $location = $this->prefixer->prefixPath($path);
-      $response = $this->client->get('exists', [
-        'query' => ['path' => $location]
-      ]);
+      $response = $this->client->get('exists', ['query' => ['path' => $location]]);
       $data = json_decode($response->getBody()->getContents(), true);
       return $data['path_type'] === 'file';
+    } catch (ClientException $exception) {
+      if ($exception->getResponse()->getStatusCode() === 404) {
+        return false;
+      }
+      throw UnableToCheckFileExistence::forLocation($path, $exception);
     } catch (Throwable $exception) {
       throw UnableToCheckFileExistence::forLocation($path, $exception);
     }
@@ -63,11 +67,14 @@ class HDFSAdapter implements FilesystemAdapter
   {
     try {
       $location = $this->prefixer->prefixPath($path);
-      $response = $this->client->get('exists', [
-        'query' => ['path' => $location]
-      ]);
+      $response = $this->client->get('exists', ['query' => ['path' => $location]]);
       $data = json_decode($response->getBody()->getContents(), true);
       return $data['path_type'] === 'directory';
+    } catch (ClientException $exception) {
+      if ($exception->getResponse()->getStatusCode() === 404) {
+        return false;
+      }
+      throw UnableToCheckDirectoryExistence::forLocation($path, $exception);
     } catch (Throwable $exception) {
       throw UnableToCheckDirectoryExistence::forLocation($path, $exception);
     }
@@ -85,8 +92,9 @@ class HDFSAdapter implements FilesystemAdapter
 
   private function upload(string $path, $contents): void
   {
+    $location = $this->prefixer->prefixPath($path);
+    $body = Utils::streamFor($contents);
     try {
-      $location = $this->prefixer->prefixPath($path);
       $this->client->post('upload/', [
         'multipart' => [
           [
@@ -95,13 +103,15 @@ class HDFSAdapter implements FilesystemAdapter
           ],
           [
             'name' => 'file',
-            'contents' => $contents,
+            'contents' => $body,
             'filename' => basename($location)
           ],
         ]
       ]);
     } catch (Throwable $exception) {
       throw UnableToWriteFile::atLocation($location, $exception->getMessage(), $exception);
+    } finally {
+        $body->detach();
     }
   }
 
@@ -119,8 +129,8 @@ class HDFSAdapter implements FilesystemAdapter
 
   private function fetchStream(string $path): StreamInterface
   {
+    $location = $this->prefixer->prefixPath($path);
     try {
-      $location = $this->prefixer->prefixPath($path);
       $response = $this->client->get('download', [
         'query' => ['path' => $location],
         'stream' => true
@@ -133,30 +143,39 @@ class HDFSAdapter implements FilesystemAdapter
 
   public function delete(string $path): void
   {
+    $location = $this->prefixer->prefixPath($path);
     try {
-      $location = $this->prefixer->prefixPath($path);
-      $pathType = $this->mimeType($path)->type();
-      $this->client->post('delete/', [
-        'form_params' => ['path' => $location],
-      ]);
+      $this->postDelete($location);
     } catch (Throwable $exception) {
-      if ($pathType === StorageAttributes::TYPE_FILE) {
-        throw UnableToDeleteFile::atLocation($location, $exception->getMessage(), $exception);
-      }
-
-      throw UnableToDeleteDirectory::atLocation($location, $exception->getMessage(), $exception);
+      throw UnableToDeleteFile::atLocation($location, $exception->getMessage(), $exception);
     }
   }
 
   public function deleteDirectory(string $path): void
   {
-    $this->delete($path);
+    $location = $this->prefixer->prefixPath($path);
+    try {
+      $this->postDelete($location);
+    } catch (Throwable $exception) {
+      throw UnableToDeleteDirectory::atLocation($location, $exception->getMessage(), $exception);
+    }
+  }
+
+  private function postDelete(string $path): void
+  {
+    try {
+      $this->client->post('delete/', ['form_params' => ['path' => $path]]);
+    } catch (ClientException $exception) {
+      if ($exception->getResponse()->getStatusCode() !== 404) {
+        throw $exception;
+      }
+    }
   }
 
   public function createDirectory(string $path, Config $config): void
   {
+    $location = $this->prefixer->prefixPath($path);
     try {
-      $location = $this->prefixer->prefixPath($path);
       $this->client->post('mkdir/', [
         'form_params' => ['path' => $location],
       ]);
@@ -191,28 +210,18 @@ class HDFSAdapter implements FilesystemAdapter
 
   public function lastModified(string $path): FileAttributes
   {
-    $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->get('list', [
-      'query' => ['path' => $location]
-    ]);
-    $data = json_decode($response->getBody()->getContents(), true);
-    $lastModified = $data['mtime'];
+    $lastModified = $this->fetchMetadata($path)['mtime'];
 
     if ($lastModified === null) {
       throw UnableToRetrieveMetadata::lastModified($path);
     }
 
-    return new FileAttributes($path, null, null, $lastModified);
+    return new FileAttributes($path, null, null, intdiv($lastModified, 1_000_000_000));
   }
 
   public function fileSize(string $path): FileAttributes
   {
-    $location = $this->prefixer->prefixPath($path);
-    $response = $this->client->get('list', [
-      'query' => ['path' => $location]
-    ]);
-    $data = json_decode($response->getBody()->getContents(), true);
-    $fileSize = $data['size'];
+    $fileSize = $this->fetchMetadata($path)['size'];
 
     if ($fileSize === null) {
       throw UnableToRetrieveMetadata::fileSize($path);
@@ -223,32 +232,36 @@ class HDFSAdapter implements FilesystemAdapter
 
   public function listContents(string $path, bool $deep): iterable
   {
+    $data = $this->fetchMetadata($path, $deep);
+
+    foreach ($data as $pathInfo) {
+      $entryPath = $this->prefixer->stripPrefix($pathInfo['path']);
+      $size = $pathInfo['size'];
+      $lastModified = $pathInfo['mtime'] === null ? null : intdiv($pathInfo['mtime'], 1_000_000_000);
+      $isFile = $pathInfo['is_file'];
+
+      yield $isFile ?
+        new FileAttributes($entryPath, $size, null, $lastModified) :
+        new DirectoryAttributes($entryPath, null, $lastModified);
+    }
+  }
+
+  private function fetchMetadata(string $path, bool $deep = false): array
+  {
     $location = $this->prefixer->prefixPath($path);
     $response = $this->client->get('list', [
       'query' => [
         'path' => $location,
-        'deep' => $deep,
-      ]
-    ]);
-    $data = json_decode($response->getBody()->getContents(), true);
-
-    foreach ($data as $pathInfo) {
-      $path = $this->prefixer->stripPrefix($pathInfo['path']);
-      $size = $pathInfo['size'];
-      $lastModified = $pathInfo['mtime'];
-      $isFile = $pathInfo['is_file'];
-
-      yield $isFile ?
-        new FileAttributes($path, $size, null, $lastModified) :
-        new DirectoryAttributes($path, null, $lastModified);
-    }
+        'deep' => $deep ? 'true' : 'false'
+      ]]);
+    return json_decode($response->getBody()->getContents(), true)['data'];
   }
 
   public function move(string $source, string $destination, Config $config): void
   {
+    $sourcePath = $this->prefixer->prefixPath($source);
+    $destinationPath = $this->prefixer->prefixPath($destination);
     try {
-      $sourcePath = $this->prefixer->prefixPath($source);
-      $destinationPath = $this->prefixer->prefixPath($destination);
       $this->client->post('move/', [
         'form_params' => [
           'src' => $sourcePath,
@@ -262,10 +275,10 @@ class HDFSAdapter implements FilesystemAdapter
 
   public function copy(string $source, string $destination, Config $config): void
   {
+    $sourcePath = $this->prefixer->prefixPath($source);
+    $destinationPath = $this->prefixer->prefixPath($destination);
     try {
-      $sourcePath = $this->prefixer->prefixPath($source);
-      $destinationPath = $this->prefixer->prefixPath($destination);
-      $response = $this->client->post('copy/', [
+      $this->client->post('copy/', [
         'form_params' => [
           'src' => $sourcePath,
           'dest' => $destinationPath,
