@@ -15,6 +15,7 @@ namespace Elabftw\Models;
 use Elabftw\Controllers\DownloadController;
 use Elabftw\Elabftw\App;
 use Elabftw\Elabftw\CreateUpload;
+use Elabftw\Elabftw\CreateUploadFromHDFS;
 use Elabftw\Elabftw\CreateUploadFromS3;
 use Elabftw\Elabftw\CreateUploadFromUploadedFile;
 use Elabftw\Enums\AccessType;
@@ -544,6 +545,14 @@ final class Uploads extends AbstractRest
             return new CreateUpload(
                 realName: $upload['real_name'],
                 filePath: $prefix . $upload['long_name'],
+                comment: $upload['comment'],
+                state: State::from($upload['state']),
+            );
+        }
+        if ($upload['storage'] === Storage::HDFS->value) {
+            return new CreateUploadFromHDFS(
+                realName: $upload['real_name'],
+                filePath: $upload['long_name'],
                 comment: $upload['comment'],
                 state: State::from($upload['state']),
             );
